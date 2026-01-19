@@ -21,23 +21,28 @@ class LibraryService
 
     public function borrowBook(string $memberId, string $isbn, int $branchId): void
     {
-        // 1. Validate Member
+        // Validate Member
         $member = $this->memberRepo->findById($memberId);
         if (!$member) {
             throw new Exception("Member not found.");
         }
-
+        
+        
         if (!$member->canBorrow()) {
-            throw new LateFeeException("Member cannot borrow due to unpaid fees or expired membership.");
+            $reason = [];
+            if ($member->getUnpaidFees() > 10.00) $reason[] = "Unpaid Fees: " . $member->getUnpaidFees();
+            if (strtotime($member->getExpiryDate()) < time()) $reason[] = "Expired: " . $member->getExpiryDate();
+            
+            throw new LateFeeException("Member cannot borrow: " . implode(', ', $reason));
         }
 
-        // 2. Check Borrow Limit
+        // Check Borrow Limit
         $activeBorrows = $this->borrowRepo->getActiveBorrowCount($memberId);
         if ($activeBorrows >= $member->getMaxBooks()) {
             throw new MemberLimitExceededException("Borrow limit reached for this member type.");
         }
 
-        // 3. Check Book Availability
+        // Check Book Availability
         $book = $this->bookRepo->findByIsbn($isbn);
         if (!$book) {
             throw new Exception("Book not found.");
@@ -46,9 +51,10 @@ class LibraryService
             throw new BookUnavailableException("Book is currently " . $book->getStatus());
         }
 
-        // 4. Create Borrow Record
+        // Create Borrow Record
         $borrowDate = date('Y-m-d');
-        $dueDate = date('Y-m-d', strtotime("+$member->getLoanPeriod() days"));
+        $loanPeriod = $member->getLoanPeriod();
+        $dueDate = date('Y-m-d', strtotime("+$loanPeriod days"));
         
         $record = new BorrowRecord(
             null, 
@@ -59,8 +65,7 @@ class LibraryService
             $dueDate
         );
 
-        // 5. Transaction
-        // Ideally wrap in DB transaction
+        // Transaction
         $this->borrowRepo->create($record);
         $this->bookRepo->updateStatus($isbn, 'Checked Out');
         
@@ -127,10 +132,6 @@ class LibraryService
             date('Y-m-d H:i:s'),
             'Pending'
         );
-
-        // We need a ReservationRepository instance here. 
-        // Ideally injected, but for this quick add we can treat it slightly loosely or add setter/constructor.
-        // Let's assume we update constructor or just instantiate here for simplicity of the workshop patch.
         $reservationRepo = new \Src\Repositories\ReservationRepository(); 
         $reservationRepo->create($reservation);
 
@@ -156,12 +157,9 @@ class LibraryService
             throw new Exception("Cannot renew: This book has pending reservations.");
         }
 
-        // Extend Due Date (assuming 14 days renewal for everyone for simplicity, or fetch member type)
-        // Simplification: Add 14 days to current Due Date
+        // Simplification
         $newDueDate = date('Y-m-d', strtotime($record->getDueDate() . ' +14 days'));
         
-        // We'd need a method in BorrowRepository to update Due Date.
-        // Let's implement a simple SQL run here or add to Repo. Cleanest is ad-hoc here for the workshop speed.
         $db = \Src\Repositories\DatabaseConnection::getInstance()->getConnection();
         $stmt = $db->prepare("UPDATE borrow_records SET due_date = :new_date WHERE id = :id");
         $stmt->execute(['new_date' => $newDueDate, 'id' => $borrowId]);

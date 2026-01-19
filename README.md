@@ -13,10 +13,17 @@ A modern, object-oriented Library Management System built with PHP 8 (no framewo
 
 ## Setup
 
-1. Import `database/schema.sql` to your MySQL database.
-2. Import `database/sample_data.sql` to populate initial data.
-3. Configure `src/Repositories/DatabaseConnection.php` if your DB credentials differ from default XAMPP.
-4. Run tests: `php tests/library_test.php`.
+To run the full test suite (automatically resets database and runs tests):
+
+```bash
+php run_tests.php
+```
+
+This will:
+
+1. Reset the `library_management` database.
+2. Import schema and sample data.
+3. Run `tests/library_test.php` verifying all scenarios.
 
 ## Directory Structure
 

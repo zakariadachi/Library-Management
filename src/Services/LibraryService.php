@@ -5,10 +5,12 @@ namespace Src\Services;
 use Src\Repositories\BookRepository;
 use Src\Repositories\MemberRepository;
 use Src\Repositories\BorrowRepository;
+use Src\Repositories\ReservationRepository;
+use Src\Repositories\InventoryRepository;
 use Src\Models\BorrowRecord;
+use Src\Exceptions\LateFeeException;
 use Src\Exceptions\BookUnavailableException;
 use Src\Exceptions\MemberLimitExceededException;
-use Src\Exceptions\LateFeeException;
 use Exception;
 
 class LibraryService
@@ -16,7 +18,9 @@ class LibraryService
     public function __construct(
         private BookRepository $bookRepo,
         private MemberRepository $memberRepo,
-        private BorrowRepository $borrowRepo
+        private BorrowRepository $borrowRepo,
+        private ReservationRepository $reservationRepo,
+        private InventoryRepository $inventoryRepo
     ) {}
 
     public function borrowBook(string $memberId, string $isbn, int $branchId): void
@@ -24,31 +28,35 @@ class LibraryService
         // Validate Member
         $member = $this->memberRepo->findById($memberId);
         if (!$member) {
-            throw new Exception("Member not found.");
+            throw new Exception("Member not found with ID: $memberId");
         }
         
+        // Check unpaid fees first
+        if ($member->getUnpaidFees() > 10.00) {
+            throw new LateFeeException();
+        }
         
-        if (!$member->canBorrow()) {
-            $reason = [];
-            if ($member->getUnpaidFees() > 10.00) $reason[] = "Unpaid Fees: " . $member->getUnpaidFees();
-            if (strtotime($member->getExpiryDate()) < time()) $reason[] = "Expired: " . $member->getExpiryDate();
-            
-            throw new LateFeeException("Member cannot borrow: " . implode(', ', $reason));
+        // Check membership expiry
+        if (strtotime($member->getExpiryDate()) < time()) {
+            throw new Exception("Membership has expired: " . $member->getExpiryDate());
         }
 
         // Check Borrow Limit
         $activeBorrows = $this->borrowRepo->getActiveBorrowCount($memberId);
         if ($activeBorrows >= $member->getMaxBooks()) {
-            throw new MemberLimitExceededException("Borrow limit reached for this member type.");
+            throw new MemberLimitExceededException();
         }
 
-        // Check Book Availability
+        // Check Book Existence
         $book = $this->bookRepo->findByIsbn($isbn);
         if (!$book) {
             throw new Exception("Book not found.");
         }
-        if (!$book->isAvailable()) {
-            throw new BookUnavailableException("Book is currently " . $book->getStatus());
+
+        // Check Inventory Availability (Multi-copy support fix)
+        $availableInBranch = $this->inventoryRepo->getAvailableCopies($isbn, $branchId);
+        if ($availableInBranch <= 0) {
+            throw new BookUnavailableException();
         }
 
         // Create Borrow Record
@@ -65,9 +73,16 @@ class LibraryService
             $dueDate
         );
 
-        // Transaction
+        // Transactional operations
         $this->borrowRepo->create($record);
-        $this->bookRepo->updateStatus($isbn, 'Checked Out');
+        
+        // Update Inventory
+        $this->inventoryRepo->updateAvailableCopies($isbn, $branchId, -1);
+        
+        // Update general book status (only if all copies everywhere are gone)
+        if ($this->inventoryRepo->getTotalAvailableAcrossBranches($isbn) <= 0) {
+            $this->bookRepo->updateStatus($isbn, 'Checked Out');
+        }
         
         echo "Book '{$book->getTitle()}' borrowed successfully by {$member->getName()}. Due: $dueDate\n";
     }
@@ -107,21 +122,48 @@ class LibraryService
         // Update Record
         $this->borrowRepo->updateReturn($borrowId, $returnDate, $lateFee);
         
-        // Update Book Status
-        $this->bookRepo->updateStatus($record->getBookIsbn(), 'Available');
+        // Update Inventory
+        $this->inventoryRepo->updateAvailableCopies($record->getBookIsbn(), $record->getBranchId(), 1);
+
+        // Update Book Status and Check reservations
+        $reservations = $this->reservationRepo->findPendingByIsbn($record->getBookIsbn());
+        if (!empty($reservations)) {
+            $this->bookRepo->updateStatus($record->getBookIsbn(), 'Reserved');
+            echo "Book returned. Status set to Reserved for next member.\n";
+        } else {
+            $this->bookRepo->updateStatus($record->getBookIsbn(), 'Available');
+        }
     }
 
     // --- Advanced Features ---
 
     public function reserveBook(string $memberId, string $isbn): void
     {
+        // Validate Member
+        $member = $this->memberRepo->findById($memberId);
+        if (!$member) {
+            throw new Exception("Member not found.");
+        }
+        if ($member->getUnpaidFees() > 10.00) {
+             throw new Exception("Cannot reserve: Unpaid fees exceed limit.");
+        }
+
         $book = $this->bookRepo->findByIsbn($isbn);
         if (!$book) {
             throw new Exception("Book not found.");
         }
 
-        if ($book->isAvailable()) {
+        // Check if book is available ANYWHERE (Simplified)
+        if ($this->inventoryRepo->getTotalAvailableAcrossBranches($isbn) > 0) {
             throw new Exception("Book is currently available. You can borrow it directly.");
+        }
+
+        // Check for existing reservations
+        $memberReservations = $this->reservationRepo->findByMember($memberId);
+        foreach ($memberReservations as $res) {
+            if ($res->getBookIsbn() === $isbn && $res->getStatus() === 'Pending') {
+                throw new Exception("You already have an active reservation for this book");
+            }
         }
 
         // Create Reservation
@@ -132,8 +174,7 @@ class LibraryService
             date('Y-m-d H:i:s'),
             'Pending'
         );
-        $reservationRepo = new \Src\Repositories\ReservationRepository(); 
-        $reservationRepo->create($reservation);
+        $this->reservationRepo->create($reservation);
 
         echo "Book reserved successfully. You will be notified when it is available.\n";
     }
@@ -150,8 +191,7 @@ class LibraryService
         }
 
         // Check if reserved
-        $reservationRepo = new \Src\Repositories\ReservationRepository();
-        $pendingReservations = $reservationRepo->findPendingByIsbn($record->getBookIsbn());
+        $pendingReservations = $this->reservationRepo->findPendingByIsbn($record->getBookIsbn());
         
         if (count($pendingReservations) > 0) {
             throw new Exception("Cannot renew: This book has pending reservations.");

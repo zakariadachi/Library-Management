@@ -20,7 +20,7 @@ class Book
 
     public function setStatus(string $status): void
     {
-        $validStatuses = ['Available', 'Checked Out', 'Reserved', 'Under Maintenance'];
+        $validStatuses = ['Available', 'Checked Out', 'Reserved'];
         if (in_array($status, $validStatuses)) {
             $this->status = $status;
         }

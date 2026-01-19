@@ -1,91 +1,90 @@
 
--- Categories (Helper for Books)
+-- Categories
 CREATE TABLE categories (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL UNIQUE
+    name VARCHAR(100) NOT NULL
+);
+
+-- Library Branches
+CREATE TABLE library_branches (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    location TEXT,
+    contact_info VARCHAR(50)
 );
 
 -- Authors
 CREATE TABLE authors (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
+    name VARCHAR(100) NOT NULL,
     biography TEXT,
-    nationality VARCHAR(100),
+    nationality VARCHAR(50),
     birth_date DATE
 );
 
--- Library Branches (Attributes from UML: id, name, location, contactInfo)
-CREATE TABLE library_branches (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL UNIQUE,
-    location VARCHAR(255) NOT NULL,
-    contact_info VARCHAR(255)
+-- Books
+CREATE TABLE books (
+    isbn VARCHAR(20) PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    publication_year INT,
+    category_id INT,
+    status ENUM('Available', 'Checked Out', 'Reserved') DEFAULT 'Available',
+    FOREIGN KEY (category_id) REFERENCES categories(id)
+);
+
+-- Book Authors
+CREATE TABLE book_authors (
+    book_isbn VARCHAR(20),
+    author_id INT,
+    PRIMARY KEY (book_isbn, author_id),
+    FOREIGN KEY (book_isbn) REFERENCES books(isbn),
+    FOREIGN KEY (author_id) REFERENCES authors(id)
 );
 
 -- Members
 CREATE TABLE members (
     id VARCHAR(50) PRIMARY KEY,
     type ENUM('Student', 'Faculty') NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    email VARCHAR(255) NOT NULL UNIQUE,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
     phone VARCHAR(20),
     expiry_date DATE NOT NULL,
     unpaid_fees DECIMAL(10, 2) DEFAULT 0.00
 );
 
--- Books
-CREATE TABLE books (
-    isbn VARCHAR(13) PRIMARY KEY,
-    title VARCHAR(255) NOT NULL,
-    publication_year INT NOT NULL,
-    category_id INT NOT NULL,
-    status ENUM('Available', 'Checked Out', 'Reserved') DEFAULT 'Available',
-    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE RESTRICT
-);
-
--- Book_Authors
-CREATE TABLE book_authors (
-    book_isbn VARCHAR(13) NOT NULL,
-    author_id INT NOT NULL,
-    PRIMARY KEY (book_isbn, author_id),
-    FOREIGN KEY (book_isbn) REFERENCES books(isbn) ON DELETE CASCADE,
-    FOREIGN KEY (author_id) REFERENCES authors(id) ON DELETE CASCADE
-);
-
--- 7. Inventory (Attributes from UML: availableCopies, totalCopies)
+-- Inventory
 CREATE TABLE inventory (
-    book_isbn VARCHAR(13) NOT NULL,
-    branch_id INT NOT NULL,
-    total_copies INT NOT NULL DEFAULT 0,
-    available_copies INT NOT NULL DEFAULT 0,
+    book_isbn VARCHAR(20),
+    branch_id INT,
+    total_copies INT DEFAULT 1,
+    available_copies INT DEFAULT 1,
     PRIMARY KEY (book_isbn, branch_id),
-    FOREIGN KEY (book_isbn) REFERENCES books(isbn) ON DELETE CASCADE,
-    FOREIGN KEY (branch_id) REFERENCES library_branches(id) ON DELETE CASCADE
+    FOREIGN KEY (book_isbn) REFERENCES books(isbn),
+    FOREIGN KEY (branch_id) REFERENCES library_branches(id)
 );
 
--- 8. Borrow Records
+-- Borrow Records
 CREATE TABLE borrow_records (
     id INT AUTO_INCREMENT PRIMARY KEY,
     member_id VARCHAR(50) NOT NULL,
-    book_isbn VARCHAR(13) NOT NULL,
+    book_isbn VARCHAR(20) NOT NULL,
     branch_id INT NOT NULL,
-    borrow_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    borrow_date DATE NOT NULL,
     due_date DATE NOT NULL,
-    return_date DATE NULL,
+    return_date DATE DEFAULT NULL,
     late_fee DECIMAL(10, 2) DEFAULT 0.00,
-    FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE RESTRICT,
-    FOREIGN KEY (book_isbn) REFERENCES books(isbn) ON DELETE RESTRICT,
-    FOREIGN KEY (branch_id) REFERENCES library_branches(id) ON DELETE RESTRICT
+    FOREIGN KEY (member_id) REFERENCES members(id),
+    FOREIGN KEY (book_isbn) REFERENCES books(isbn),
+    FOREIGN KEY (branch_id) REFERENCES library_branches(id)
 );
 
--- 9. Reservations
-DROP TABLE IF EXISTS reservations;
+-- Reservations
 CREATE TABLE reservations (
     id INT AUTO_INCREMENT PRIMARY KEY,
     member_id VARCHAR(50) NOT NULL,
-    book_isbn VARCHAR(13) NOT NULL,
-    reservation_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    status ENUM('Pending', 'Fulfilled', 'Cancelled') DEFAULT 'Pending',
-    FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
-    FOREIGN KEY (book_isbn) REFERENCES books(isbn) ON DELETE CASCADE
+    book_isbn VARCHAR(20) NOT NULL,
+    reservation_date DATETIME NOT NULL,
+    status ENUM('Pending', 'Completed', 'Cancelled') DEFAULT 'Pending',
+    FOREIGN KEY (member_id) REFERENCES members(id),
+    FOREIGN KEY (book_isbn) REFERENCES books(isbn)
 );

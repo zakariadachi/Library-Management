@@ -36,14 +36,32 @@ class ReservationRepository
 
         $reservations = [];
         foreach ($rows as $row) {
-            $reservations[] = new Reservation(
-                $row['id'],
-                $row['member_id'],
-                $row['book_isbn'],
-                $row['reservation_date'],
-                $row['status']
-            );
+            $reservations[] = $this->mapToModel($row);
         }
         return $reservations;
+    }
+
+    public function findByMember(string $memberId): array
+    {
+        $stmt = $this->db->prepare("SELECT * FROM reservations WHERE member_id = :member_id ORDER BY reservation_date DESC");
+        $stmt->execute(['member_id' => $memberId]);
+        $rows = $stmt->fetchAll();
+
+        $reservations = [];
+        foreach ($rows as $row) {
+            $reservations[] = $this->mapToModel($row);
+        }
+        return $reservations;
+    }
+
+    private function mapToModel(array $row): Reservation
+    {
+        return new Reservation(
+            $row['id'],
+            $row['member_id'],
+            $row['book_isbn'],
+            $row['reservation_date'],
+            $row['status']
+        );
     }
 }

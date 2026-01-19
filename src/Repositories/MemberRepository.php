@@ -26,7 +26,7 @@ class MemberRepository
             return null;
         }
 
-        // Factory logic based on 'type' column
+        // Factory logic
         if ($data['type'] === 'Student') {
             return new StudentMember(
                 $data['id'],

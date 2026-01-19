@@ -11,7 +11,7 @@ class DatabaseConnection
     private PDO $connection;
 
     private string $host = 'localhost';
-    private string $db_name = 'library_management'; // Default name, user might need to change
+    private string $db_name = 'library_management';
     private string $username = 'root';
     private string $password = '';
 
@@ -21,10 +21,8 @@ class DatabaseConnection
             $dsn = "mysql:host={$this->host};dbname={$this->db_name};charset=utf8mb4";
             $this->connection = new PDO($dsn, $this->username, $this->password);
             
-            // Set error mode to exception
             $this->connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             
-            // Set default fetch mode to associative array
             $this->connection->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
             
         } catch (PDOException $e) {
@@ -45,10 +43,8 @@ class DatabaseConnection
         return $this->connection;
     }
 
-    // Prevent cloning
     private function __clone() {}
 
-    // Prevent unserializing
     public function __wakeup()
     {
         throw new \Exception("Cannot unserialize a singleton.");

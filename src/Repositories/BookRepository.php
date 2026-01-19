@@ -33,6 +33,31 @@ class BookRepository
         );
     }
 
+    public function searchBooks(string $term): array
+    {
+        $sql = "
+            SELECT 
+                b.*,
+                c.name AS category_name,
+                GROUP_CONCAT(a.name) AS authors
+            FROM books b
+            JOIN categories c ON b.category_id = c.id
+            JOIN book_authors ba ON b.isbn = ba.book_isbn
+            JOIN authors a ON ba.author_id = a.id
+            WHERE b.title LIKE :term
+               OR a.name LIKE :term
+               OR c.name LIKE :term
+            GROUP BY b.isbn
+        ";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([
+            ':term' => '%' . $term . '%'
+        ]);
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
     public function updateStatus(string $isbn, string $status): void
     {
         $stmt = $this->db->prepare("UPDATE books SET status = :status WHERE isbn = :isbn");

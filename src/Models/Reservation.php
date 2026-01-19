@@ -9,7 +9,7 @@ class Reservation
         private string $memberId,
         private string $bookIsbn,
         private string $reservationDate,
-        private string $status = 'Pending' // Pending, Fulfilled, Cancelled
+        private string $status = 'Pending'
     ) {}
 
     public function getId(): ?int { return $this->id; }
